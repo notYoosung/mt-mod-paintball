@@ -1,19 +1,69 @@
-local shoot_cooldown = ctf_core.init_cooldowns()
+function also_register_loaded_tool(name, def, user_loaded_def)
+	local loaded_def = table.copy(def)
 
-minetest.register_craftitem(
-    "ctf_ranged:eammo",
-    {
-        description = "Energy Ammo",
-        inventory_image = "ctf_ranged_eammo.png"
-    }
-)
-minetest.register_craftitem(
-    "ctf_ranged:echarge",
-    {
-        description = "Energy Charge",
-        inventory_image = "ctf_ranged_echarge.png"
-    }
-)
+	if user_loaded_def then
+		user_loaded_def(loaded_def)
+	end
+
+	loaded_def.unloaded_name = name
+	def.loaded_name = name.."_loaded"
+
+	minetest.register_tool(def.loaded_name, loaded_def)
+
+	return name, def
+end
+
+function unload_weapon(weapon, amount)
+	local iname = weapon:get_name()
+	local rounds = assert(
+		minetest.registered_tools[iname].rounds,
+		"Must define 'rounds' property for ranged weapon "..dump(iname)
+	)
+
+	local new_wear = (65535 / (rounds-1)) * (amount or 1)
+
+	new_wear = weapon:get_wear() + new_wear
+
+	if new_wear >= 65535 then
+		return ItemStack(weapon:get_definition().unloaded_name)
+	end
+
+	weapon:set_wear(new_wear)
+
+	return weapon
+end
+
+function load_weapon(weapon, inv, lists)
+	local idef = weapon:get_definition()
+
+	assert(idef.loaded_name, "Item "..idef.name.." doesn't have 'loaded_name' set!")
+	assert(idef.ammo, "Item "..idef.name.." doesn't have 'ammo' set!")
+
+	if type(idef.ammo) ~= "table" then
+		idef.ammo = {idef.ammo}
+	end
+
+	if not lists then
+		lists = {"main"}
+	elseif type(lists) ~= "table" then
+		lists = {lists}
+	end
+
+	for _, item in pairs(idef.ammo) do
+		for _, list in pairs(lists) do
+			if inv:contains_item(list, item) then
+				inv:remove_item(list, item)
+
+				return ItemStack(idef.loaded_name)
+			end
+		end
+	end
+
+	return weapon
+end
+
+
+local shoot_cooldown = ctf_core.init_cooldowns()
 
 local function process_ray(ray, user, look_dir, def)
     local hitpoint =
@@ -75,7 +125,7 @@ local function process_ray(ray, user, look_dir, def)
                     if def.liquid_travel_dist then
                     -- Disabled due to a stack overflow when shooting quick sand
                     --[[
-		  process_ray(rawf.bulletcast(
+		  process_ray(bulletcast(
 				 def.bullet, hitpoint.intersection_point,
 				 vector.add(hitpoint.intersection_point, vector.multiply(look_dir, def.liquid_travel_dist)), true, false
 					     ), user, look_dir, def)
@@ -98,7 +148,7 @@ local function process_ray(ray, user, look_dir, def)
 end
 
 -- Can be overridden for custom behaviour
-function ctf_ranged.can_use_gun(player, name)
+function can_use_gun(player, name)
     return true
 end
 
@@ -131,9 +181,9 @@ local function cartridge_particles(player)
     )
 end
 
-function ctf_ranged.simple_register_gun(name, def)
+function simple_register_gun(name, def)
     minetest.register_tool(
-        rawf.also_register_loaded_tool(
+        also_register_loaded_tool(
             name,
             {
                 description = def.description,
@@ -146,12 +196,12 @@ function ctf_ranged.simple_register_gun(name, def)
                 _g_category = def.type,
                 groups = {ranged = 1, [def.type] = 1, tier = def.tier or 1, not_in_creative_inventory = nil},
                 on_use = function(itemstack, user)
-                    if not ctf_ranged.can_use_gun(user, name) then
+                    if not can_use_gun(user, name) then
                         minetest.sound_play("ctf_ranged_click", {pos = user:get_pos()}, true)
                         return
                     end
 
-                    local result = rawf.load_weapon(itemstack, user:get_inventory())
+                    local result = load_weapon(itemstack, user:get_inventory())
 
                     if result:get_name() == itemstack:get_name() then
                         minetest.sound_play("ctf_ranged_click", {pos = user:get_pos()}, true)
@@ -171,7 +221,7 @@ function ctf_ranged.simple_register_gun(name, def)
                 loaded_def.bullet_image = def.bullet_image
                 loaded_def.bullethole_image = def.bullethole_image
                 loaded_def.on_use = function(itemstack, user)
-                    if not ctf_ranged.can_use_gun(user, name) then
+                    if not can_use_gun(user, name) then
                         minetest.sound_play("ctf_ranged_click", {pos = user:get_pos()}, true)
                         return
                     end
@@ -183,7 +233,7 @@ function ctf_ranged.simple_register_gun(name, def)
                     -- Could be worth benchmarking the performance effects.
                     --cartridge_particles(user)
                     if def.automatic then
-                        if not rawf.enable_automatic(def.fire_interval, itemstack, user) then
+                        if not enable_automatic(def.fire_interval, itemstack, user) then
                             return
                         end
                     else
@@ -194,12 +244,12 @@ function ctf_ranged.simple_register_gun(name, def)
                         def.on_fire_callback(user, def)
                         minetest.sound_play(def.fire_sound, {pos = user:get_pos()}, true)
                         if def.rounds > 0 then
-                            return rawf.unload_weapon(itemstack)
+                            return unload_weapon(itemstack)
                         end
                         return
                     end
 
-                    local spawnpos, look_dir = rawf.get_bullet_start_data(user)
+                    local spawnpos, look_dir = get_bullet_start_data(user)
                     local endpos = vector.add(spawnpos, vector.multiply(look_dir, def.range))
                     local rays
 
@@ -213,10 +263,10 @@ function ctf_ranged.simple_register_gun(name, def)
 
                     if not def.bullet.spread then
                         rays = {
-                            rawf.bulletcast(def.bullet, spawnpos, endpos, true, true)
+                            bulletcast(def.bullet, spawnpos, endpos, true, true)
                         }
                     else
-                        rays = rawf.spread_bulletcast(def.bullet, spawnpos, endpos, true, true)
+                        rays = spread_bulletcast(def.bullet, spawnpos, endpos, true, true)
                     end
 
                     minetest.sound_play(def.fire_sound, {pos = user:get_pos()}, true)
@@ -226,7 +276,7 @@ function ctf_ranged.simple_register_gun(name, def)
                     end
 
                     if def.rounds > 0 then
-                        return rawf.unload_weapon(itemstack)
+                        return unload_weapon(itemstack)
                     end
                 end
                 if def.rightclick_func then
