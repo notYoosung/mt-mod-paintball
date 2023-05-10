@@ -1,0 +1,13 @@
+https://rubenwardy.com/minetest_modding_book/en/items/nodes_items_crafting.html
+
+https://github.com/minetest-mods/3d_armor/blob/master/3d_armor_ui/init.lua
+https://github.com/minetest-mods/unified_inventory/blob/master/register.lua
+
+https://github.com/natelastname/ctf_guns/blob/master/ctf_ranged/wep_defns.lua
+https://github.com/LoneWolfHT/rawf/blob/main/ammo.lua
+https://github.com/damocles-minetest/guns/blob/master/api.lua
+https://github.com/lhofhansl/rangedweapons/blob/main/init.lua
+
+https://github.com/TheTermos/mobkit/blob/master/mobkit_api.txt
+
+https://github.com/MT-CTF/capturetheflag/blob/master/mods/other/throwable_snow/init.lua
